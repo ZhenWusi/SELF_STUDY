@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fine-Tuning Language Models with Reward Learning on Policy | 使用策略奖励学习微调语言模型</title>
+</head>
+<head>
+    <!-- 引入 MathJax -->
+    <script type="text/javascript" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js">
+    </script>
+</head>
+<body>
+    <table>
+        <!-- 标题部分 -->
+        <tr>
+            <th>
+                <h1>Fine-Tuning Language Models with Reward Learning on Policy</h1>
+            </th>
+            <th>
+                <h1>使用策略奖励学习微调语言模型</h1>
+            </th>
+        </tr>
+        <!-- 摘要标题 -->
+        <tr>
+            <th>
+                <h2>Abstract</h2>
+            </th>
+            <th>
+                <h2>摘要</h2>
+            </th>
+        </tr>
+        <!-- 摘要内容 -->
+        <tr>
+            <td>Reinforcement learning from human feedback (RLHF) has emerged as an effective approach to aligning large language models (LLMs) to human preferences.</td>
+            <td>从人类反馈中进行强化学习（RLHF）已成为将大型语言模型（LLMs）与人类偏好对齐的一种有效方法。</td>
+        </tr>
+        <tr>
+            <td>RLHF contains three steps, i.e., human preference collecting, reward learning, and policy optimization, which are usually performed serially.</td>
+            <td>RLHF 包含三个步骤，即人类偏好收集、奖励学习和策略优化，通常按顺序进行。</td>
+        </tr>
+        <tr>
+            <td>Despite its popularity, however, (fixed) reward models may suffer from inaccurate off-distribution, since policy optimization continuously shifts LLMs’ data distribution.</td>
+            <td>尽管 RLHF 很受欢迎，但（固定的）奖励模型可能会因分布外的不准确性而受到影响，因为策略优化会不断改变 LLM 的数据分布。</td>
+        </tr>
+        <tr>
+            <td>Repeatedly collecting new preference data from the latest LLMs may alleviate this issue, which unfortunately makes the resulting system more complicated and difficult to optimize.</td>
+            <td>反复从最新的 LLM 中收集新的偏好数据可能会缓解此问题，但不幸的是，这会使最终系统变得更加复杂且难以优化。</td>
+        </tr>
+        <tr>
+            <td>In this paper, we propose reward learning on policy (RLP), an unsupervised framework that refines a reward model using policy samples to keep it on-distribution.</td>
+            <td>在本文中，我们提出了一种名为策略奖励学习（RLP）的无监督框架，该框架通过策略样本优化奖励模型以保持其分布内。</td>
+        </tr>
+        <tr>
+            <td>Specifically, an unsupervised multi-view learning method is introduced to learn robust representations of policy samples.</td>
+            <td>具体来说，引入了一种无监督多视角学习方法，用于学习策略样本的鲁棒表示。</td>
+        </tr>
+        <tr>
+            <td>Meanwhile, a synthetic preference generation approach is developed to simulate high-quality preference data with policy outputs.</td>
+            <td>同时，开发了一种合成偏好生成方法，用于通过策略输出模拟高质量的偏好数据。</td>
+        </tr>
+        <tr>
+            <td>Extensive experiments on three benchmark datasets show that RLP consistently outperforms the state-of-the-art.</td>
+            <td>在三个基准数据集上的广泛实验表明，RLP 始终优于最新技术水平。</td>
+        </tr>
+        <tr>
+            <td>Our code is available at https://github.com/AlibabaResearch/DAMO-ConvAI/tree/main/rlp.</td>
+            <td>我们的代码可在 https://github.com/AlibabaResearch/DAMO-ConvAI/tree/main/rlp 获取。</td>
+        </tr>
+    </table>
+    <table>
+        <!-- 标题部分 -->
+        <tr>
+            <th>
+                <h1>1 Introduction</h1>
+            </th>
+            <th>
+                <h1>1 引言</h1>
+            </th>
+        </tr>
+        <!-- 内容部分 -->
+        <tr>
+            <td>Large language models (LLMs) (Brown et al., 2020; Bommasani et al., 2021) have shown great promise in following open-ended user instructions (Askell et al., 2021; Ouyang et al., 2022; Longpre et al., 2023).</td>
+            <td>大型语言模型（LLMs）（Brown 等, 2020; Bommasani 等, 2021）在遵循开放式用户指令方面表现出了巨大的潜力（Askell 等, 2021; Ouyang 等, 2022; Longpre 等, 2023）。</td>
+        </tr>
+        <tr>
+            <td>These capabilities are largely attributed to the fine-tuning of pretrained LLMs using Reinforcement Learning from Human Feedback (RLHF) (Christiano et al., 2017; Bai et al., 2022a), which is a prominent technique to align LLMs with human preferences and greatly enhance their usability and safety (OpenAI, 2023; Anthropic, 2023; Google, 2023).</td>
+            <td>这些能力主要归功于通过从人类反馈中进行强化学习（RLHF）（Christiano 等, 2017; Bai 等, 2022a）对预训练的 LLM 进行微调，这是一种将 LLM 与人类偏好对齐的重要技术，大大提高了它们的可用性和安全性（OpenAI, 2023; Anthropic, 2023; Google, 2023）。</td>
+        </tr>
+    </table>
+        <div style="text-align: center;">
+            <img src="https://figures.semanticscholar.org/969c1dc38c98f2dbfb981a542880559890366494/1-Figure1-1.png" 
+                alt="Comparison of standard RLHF (top) and RLHF with reward learning on policies (bottom)" 
+                style="max-width: 50%; height: auto;">
+            <p style="font-size: xx-small; line-height: 1.2;"><b>Fig. 1. Comparison of standard RLHF (top) and RLHF with reward learning on policies (bottom). Different from (top), which performs reward learning and policy optimization serially, we iteratively train one of the two models with the help of the other.</b></p>
+            <p style="font-size: xx-small; line-height: 1.2;"><b>图 1. 标准 RLHF（上）与带有策略奖励学习的 RLHF（下）的比较。与（上）不同的是，（上）依次进行奖励学习和策略优化，而我们通过另一模型的帮助，迭代地训练两个模型之一。</b></p>
+        </div>        
+    <table>
+        <tr>
+            <td>A typical RLHF procedure is comprised of three interrelated steps: human preference collecting, reward learning, and policy optimization (Figure 1 top).</td>
+            <td>一个典型的 RLHF 过程包括三个相互关联的步骤：人类偏好收集、奖励学习和策略优化（图 1 上部）。</td>
+        </tr>
+        <tr>
+            <td>The reward learning step fits a reward model to the preference data that elicits evaluations from humans.</td>
+            <td>奖励学习步骤将奖励模型拟合到来自人类评估的偏好数据上。</td>
+        </tr>
+        <tr>
+            <td>The policy optimization step uses reinforcement learning (RL) to fine-tune a language model to produce outputs assigned high reward.</td>
+            <td>策略优化步骤使用强化学习（RL）对语言模型进行微调，以生成分配高奖励的输出。</td>
+        </tr>
+        <tr>
+            <td>In practice, the three key steps of RLHF are often performed serially (Casper et al., 2023).</td>
+            <td>在实践中，RLHF 的三个关键步骤通常是按顺序进行的（Casper 等, 2023）。</td>
+        </tr>
+        <tr>
+            <td>Since policy optimization shifts the language model’s data distribution during the RL phase, the (fixed) reward model will be inaccurate off-distribution which is trained on offline data (Touvron et al., 2023b).</td>
+            <td>由于策略优化在 RL 阶段会改变语言模型的数据分布，因此基于离线数据训练的（固定的）奖励模型会在分布外变得不准确（Touvron 等, 2023b）。</td>
+        </tr>
+        <tr>
+            <td>Hence, reward model accuracy can quickly degrade and in turn degenerate the policy that exploits differences between the inferred and true reward (Gao et al., 2023).</td>
+            <td>因此，奖励模型的准确性可能会迅速下降，进而使利用推断奖励和真实奖励差异的策略退化（Gao 等, 2023）。</td>
+        </tr>
+        <tr>
+            <td>The above issue can be mitigated by gathering new human preference data from an up-to-date version of policy (Ziegler et al., 2019).</td>
+            <td>通过从最新版本的策略中收集新的用户偏好数据可以缓解上述问题（Ziegler 等, 2019）。</td>
+        </tr>
+        <tr>
+            <td>However, the resulting system is significantly more complicated and difficult to optimize, involving iterations of data gathering, reward learning, and RL fine-tuning.</td>
+            <td>然而，最终的系统变得显著复杂且难以优化，涉及数据收集、奖励学习和 RL 微调的多次迭代。</td>
+        </tr>
+        <tr>
+            <td>Moreover, significant work is required to maintain high data quality over a long time in this setting.</td>
+            <td>此外，在这种环境中需要投入大量工作以长期保持数据的高质量。</td>
+        </tr>
+        <tr>
+            <tr>
+                <td>In this paper, we show how to optimize a reward model against the policy to keep it on-distribution, without repeatedly collecting new human preference data.</td>
+                <td>在本文中，我们展示了如何优化奖励模型，使其与策略对齐并保持分布内，而无需反复收集新的用户偏好数据。</td>
+            </tr>
+        </tr>
+        <tr>
+            <td>We propose Reward Learning on Policy (RLP), a framework that refines a reward model using policy samples in an unsupervised manner.</td>
+            <td>我们提出了策略奖励学习（RLP），一种通过无监督方式使用策略样本优化奖励模型的框架。</td>
+        </tr>
+        <tr>
+            <td>RLP first trains a reward model and a language model policy from scratch with standard RLHF methods, and then retrains the reward model when exposed to the sample distribution of the trained policy.</td>
+            <td>RLP 首先使用标准 RLHF 方法从头开始训练奖励模型和语言模型策略，然后在暴露于训练策略的样本分布时重新训练奖励模型。</td>
+        </tr>
+        <tr>
+            <td>Finally, RLP retrains the policy on the retrained reward model, which attempts to maintain an accurate reward for the latest policy.</td>
+            <td>最后，RLP 在重新训练的奖励模型上重新训练策略，力求为最新的策略保持准确的奖励。</td>
+        </tr>
+        <tr>
+            <td>Concretely, RLP uses policy samples to retrain the reward model via two methods: unsupervised multi-view learning (UML) and synthetic preference generation (SPG).</td>
+            <td>具体来说，RLP 通过两种方法使用策略样本重新训练奖励模型：无监督多视角学习（UML）和合成偏好生成（SPG）。</td>
+        </tr>
+        <tr>
+            <td>RLP-UML constructs two views for an input by generating two responses from the policy (Zhao et al., 2017), then optimizes a multi-view information bottleneck loss (Federici et al., 2020) when fitting the reward model to a dataset of human preferences.</td>
+            <td>RLP-UML 通过从策略中生成两个响应来为输入构建两个视角（Zhao 等，2017），然后在将奖励模型拟合到人类偏好数据集时，优化多视角信息瓶颈损失（Federici 等，2020）。</td>
+        </tr>
+        <tr>
+            <td>This training objective follows the information bottleneck principle (Tishby et al., 2000) and helps learn robust representations of the policy’s data distribution.</td>
+            <td>该训练目标遵循信息瓶颈原理（Tishby 等，2000），并有助于学习策略数据分布的鲁棒表示。</td>
+        </tr>
+        <tr>
+            <td>In addition, RLP-SPG simulates preferences on policy generations to supplement the human preference data.</td>
+            <td>此外，RLP-SPG 在策略生成上模拟偏好，以补充人类偏好数据。</td>
+        </tr>
+        <tr>
+            <td>Rather than producing and scoring two outputs with LLMs as in Reinforcement Learning from AI Feedback (RLAIF) (Bai et al., 2022b; Lee et al., 2023), RLP-SPG generates a set of outputs for an instruction.</td>
+            <td>与基于 AI 反馈的强化学习（RLAIF）（Bai 等，2022b；Lee 等，2023）中使用 LLM 生成和评分两个输出不同，RLP-SPG 为一个指令生成一组输出。</td>
+        </tr>
+        <tr>
+            <td>In this way, RLP-SPG can quantify uncertainty and decide when to trust model predictions via measuring the size of the largest semantic equivalence cluster (Kuhn et al., 2023; Si et al., 2023).</td>
+            <td>通过这种方式，RLP-SPG 可以量化不确定性，并通过衡量最大语义等价集群的大小来决定何时信任模型预测（Kuhn 等，2023；Si 等，2023）。</td>
+        </tr>
+        <tr>
+            <td>Thus, RLP-SPG selectively generates pairwise preferences for instructions with low uncertainty (Lin et al., 2023), where the preferred output is sampled from the largest cluster of the output set and the non-preferred one is sampled from the rest clusters.</td>
+            <td>因此，RLP-SPG 为低不确定性的指令选择性生成成对的偏好（Lin 等，2023），其中偏好的输出从输出集的最大集群中采样，而非偏好的输出则从其余集群中采样。</td>
+        </tr>
+        <tr>
+            <td>This sampling scheme also conforms to the self-consistency assumption, i.e., the most consistent output is selected as the final prediction (Wang et al., 2023; Chen et al., 2023).</td>
+            <td>该采样方案还符合自一致性假设，即选择最一致的输出作为最终预测（Wang 等，2023；Chen 等，2023）。</td>
+        </tr>
+        <tr>
+            <td>Our main contributions are as follows:</td>
+            <td>我们的主要贡献如下：</td>
+        </tr>
+        <tr>
+            <td>• We propose Reward Learning on Policy (RLP), an unsupervised framework that refines a reward model using policy samples to keep it on-distribution for RLHF.</td>
+            <td>• 我们提出了策略奖励学习（RLP），一种通过无监督方式使用策略样本优化奖励模型，以保持其在 RLHF 中分布内的框架。</td>
+        </tr>
+        <tr>
+            <td>• We optimize a multi-view loss when retraining the reward model to learn representations of the policy’s data distribution. We also simulate preferences with a set of policy outputs, which enables selective generation and high-quality data construction.</td>
+            <td>• 我们在重新训练奖励模型时优化多视角损失，以学习策略数据分布的表示。我们还通过一组策略输出模拟偏好，这使得选择性生成和高质量数据构建成为可能。</td>
+        </tr>
+        <tr>
+            <td>• Our experiments on three standard benchmark datasets show that RLP outperforms existing methods for learning from human feedback, including PPO-based RLHF.</td>
+            <td>• 我们在三个标准基准数据集上的实验表明，RLP 优于现有的从人类反馈中学习的方法，包括基于 PPO 的 RLHF。</td>
+        </tr>
+        <tr>
+            <th>
+                <h1>2 Related Work</h1>
+            </th>
+            <th>
+                <h1>2 相关工作</h1>
+            </th>
+        </tr>
+        <tr>
+            <td>Instruction tuning is a procedure to fine-tune pretrained LLMs with instructions and human-written completions (Mishra et al., 2022; Sanh et al., 2022), which increases the usability of LLMs (Chung et al., 2022).</td>
+            <td>指令微调是通过指令和人工编写的完成文本来微调预训练的LLMs（Mishra等，2022；Sanh等，2022），这增强了LLMs的可用性（Chung等，2022）。</td>
+        </tr>
+        <tr>
+            <td>Recently, RLHF has emerged as the central method for fine-tuning LLMs based on human preferences and further improves their downstream task performance and alignment with user intent (Christiano et al., 2017).</td>
+            <td>最近，RLHF成为基于人类偏好微调LLMs的核心方法，并进一步提高了其下游任务的性能和与用户意图的一致性（Christiano等，2017）。</td>
+        </tr>
+        <tr>
+            <td>Generally, RLHF methods first fit a reward model to human preferences, then fine-tune a language model to maximize the inferred reward using RL algorithms.</td>
+            <td>通常，RLHF方法首先将奖励模型拟合到人类偏好，然后使用RL算法微调语言模型，以最大化推断出的奖励。</td>
+        </tr>
+        <tr>
+            <td>Reward models tend to be an imperfect estimate of the true reward due to misspecification (Bıyık et al., 2022) and misgeneralization (Tien et al., 2023), and imperfect in reward models leads to reward hacking (Skalse et al., 2022).</td>
+            <td>由于模型误设定（Bıyık等，2022）和误泛化（Tien等，2023），奖励模型通常是对真实奖励的不完美估计，且奖励模型的不完美会导致奖励作弊（Skalse等，2022）。</td>
+        </tr>
+        <tr>
+            <td>Methods with reward ensemble (Coste et al., 2024) and diverse feedback (Yu et al., 2023) are proposed to tackle this issue.</td>
+            <td>为了解决这个问题，提出了具有奖励集成（Coste等，2024）和多样化反馈（Yu等，2023）的方法。</td>
+        </tr>
+        <tr>
+            <td>Our method retrains the reward model with policy samples to make it on-distribution and generalize to the policy’s data distribution.</td>
+            <td>我们的方法通过策略样本重新训练奖励模型，以使其保持在分布上，并推广到策略的数据分布。</td>
+        </tr>
+        <tr>
+            <td>Human feedback simulation aims to generate additional synthetic preference data using weak human supervision and LLMs (Bai et al., 2022b).</td>
+            <td>人类反馈模拟旨在利用弱人工监督和LLMs生成额外的合成偏好数据（Bai等，2022b）。</td>
+        </tr>
+        <tr>
+            <td>RLAIF approaches obtain pairwise preferences by scoring two outputs from a shared prompt (Lee et al., 2023), whereas RLCD generates outputs from two variants of a prompt (Yang et al., 2024).</td>
+            <td>RLAIF方法通过对共享提示生成的两个输出进行打分来获得成对偏好（Lee等，2023），而RLCD则从两种提示变体中生成输出（Yang等，2024）。</td>
+        </tr>
+        <tr>
+            <td>Our method RLP-SPG is the first attempt to simulate human preferences using a set of outputs.</td>
+            <td>我们的方法RLP-SPG是第一次尝试使用一组输出模拟人类偏好。</td>
+        </tr>
+        <tr>
+            <td>Uncertainty quantification provides confidence scores for generations of LLMs, helping users decide when to trust these generation results (Si et al., 2023).</td>
+            <td>不确定性量化为LLMs生成的结果提供置信度评分，帮助用户决定何时信任这些生成结果（Si等，2023）。</td>
+        </tr>
+        <tr>
+            <td>Supervised methods fine-tune the language model to predict the uncertainty (Kadavath et al., 2022; Lin et al., 2022), while unsupervised methods measure uncertainty by calculating semantic entropy or semantic dispersion amongst generated answers (Kuhn et al., 2023; Lin et al., 2023).</td>
+            <td>有监督方法通过微调语言模型来预测不确定性（Kadavath等，2022；Lin等，2022），而无监督方法则通过计算生成答案之间的语义熵或语义离散度来衡量不确定性（Kuhn等，2023；Lin等，2023）。</td>
+        </tr>
+        <tr>
+            <td>In this work, we measure uncertainty to selectively generate preference data.</td>
+            <td>在本工作中，我们通过衡量不确定性来选择性地生成偏好数据。</td>
+        </tr>
+        <tr>
+            <th>
+                <h1>3 Preliminaries</h1>
+            </th>
+            <th>
+                <h1>3 前提</h1>
+            </th>
+        </tr>
+        <tr>
+            <td>We start by introducing the instruction following task (Ouyang et al., 2022; Bai et al., 2022a).</td>
+            <td>我们首先介绍指令跟随任务（Ouyang 等，2022；Bai 等，2022a）。</td>
+        </tr>
+        <tr>
+            <td>Given user instructions \(x \in X\) (e.g., “Generate a definition for artificial intelligence”), we aim to develop a model \(\pi_\theta\) that generates high-quality responses \(y \sim \pi_\theta(y|x)\) as judged by some latent reward model.</td>
+            <td>给定用户指令 \(x \in X\)（例如，“生成人工智能的定义”），我们旨在开发一个模型 \(\pi_\theta\)，根据某些潜在奖励模型生成高质量的响应 \(y \sim \pi_\theta(y|x)\)。</td>
+        </tr>
+        <tr>
+            <td>In this study, we focus on RLHF for this task, due to its central role in instruction-following LLMs (Ouyang et al., 2022).</td>
+            <td>在本研究中，我们专注于RLHF任务，因为它在指令跟随LLMs中的核心作用（Ouyang 等，2022）。</td>
+        </tr>
+        <tr>
+            <td>RLHF usually consists of three steps: human preference collecting, reward modeling, and RL policy optimization (Dubois et al., 2024; Rafailov et al., 2024; Casper et al., 2023).</td>
+            <td>RLHF通常包含三个步骤：人类偏好收集、奖励建模和RL策略优化（Dubois 等，2024；Rafailov 等，2024；Casper 等，2023）。</td>
+        </tr>
+        <tr>
+            <td><b>Step 0, SFT:</b> RLHF generally begins with a pretrained model, which is fine-tuned with supervised learning on instruction-following demonstrations \((x, y)\), to produce a model \(\pi^{SFT}(y|x)\).</td>
+            <td><b>步骤0，SFT：</b> RLHF通常从一个预训练模型开始，使用监督学习对指令跟随示范 \((x, y)\) 进行微调，以生成模型 \(\pi^{SFT}(y|x)\)。</td>
+        </tr>
+        <tr>
+            <td><b>Step 1, Human preference collecting:</b> The first step is to produce pairs of responses \((y_1, y_2) \sim \pi^{SFT}(y|x)\) for the instruction \(x\). These are then presented to humans who express preferences for each response, denoted as \(y_w \succ y_l | x\) where \(y_w\) and \(y_l\) denote the preferred and non-preferred completion amongst \((y_1, y_2)\) respectively.</td>
+            <td><b>步骤1，人类偏好收集：</b> 第一步是生成响应对 \((y_1, y_2) \sim \pi^{SFT}(y|x)\) 对于指令 \(x\)。然后将这些呈现给人类，表达他们对每个响应的偏好，表示为 \(y_w \succ y_l | x\)，其中 \(y_w\) 和 \(y_l\) 分别表示在 \((y_1, y_2)\) 中的优选和非优选响应。</td>
+        </tr>
+        <tr>
+            <td><b>Step 2, Reward learning:</b> The second step is to fit a reward model \(r_\phi(x, y)\) by minimizing the negative log-likelihood loss (Christiano et al., 2017):</td>
+            <td><b>步骤2，奖励学习：</b> 第二步是通过最小化负对数似然损失来拟合奖励模型 \(r_\phi(x, y)\)（Christiano 等，2017）：</td>
+        </tr>
+        <tr>
+            <td><span class="math-container">\( L_R = - \mathbb{E}_{(x, y_w, y_l) \sim D} \left[ \log \sigma \left( r_\phi(x, y_w) - r_\phi(x, y_l) \right) \right] \)</span></td>
+            <td><span class="math-container">\( L_R = - \mathbb{E}_{(x, y_w, y_l) \sim D} \left[ \log \sigma \left( r_\phi(x, y_w) - r_\phi(x, y_l) \right) \right] \)</span></td>
+        </tr>
+        <tr>
+            <td>Where \(D = \{(x, y_w, y_l)\}\) is a dataset of pairwise preferences and \(\sigma\) is the sigmoid function. \(r_\phi(x, y)\) is often initialized from \(\pi^{SFT}(y|x)\) with one additional linear layer that infers the reward value.</td>
+            <td>其中，\(D = \{(x, y_w, y_l)\}\) 是一个成对偏好数据集，\(\sigma\) 是sigmoid函数。\(r_\phi(x, y)\) 通常从 \(\pi^{SFT}(y|x)\) 初始化，并加一个额外的线性层来推断奖励值。</td>
+        </tr>
+        <tr>
+            <td><b>Step 3, RL policy optimization:</b> The third step is to use the reward model \(r_\phi(x, y)\) to fine-tune the language model. The parameters \(\theta\) of \(\pi\) are trained to maximize</td>
+            <td><b>步骤3，RL策略优化：</b> 第三步是使用奖励模型 \(r_\phi(x, y)\) 对语言模型进行微调。模型 \(\pi\) 的参数 \(\theta\) 通过最大化以下公式进行训练：</td>
+        </tr>
+        <tr>
+            <td><span class="math-container">\( \mathbb{E}_{x \sim U, y \sim \pi_\theta(y|x)} \left[ r_\phi(x, y) - \beta D_{\text{KL}} \left( \pi_\theta(y|x) || \pi_\text{ref}(y|x) \right) \right] \)</span></td>
+            <td><span class="math-container">\( \mathbb{E}_{x \sim U, y \sim \pi_\theta(y|x)} \left[ r_\phi(x, y) - \beta D_{\text{KL}} \left( \pi_\theta(y|x) || \pi_\text{ref}(y|x) \right) \right] \)</span></td>
+        </tr>
+        <tr>
+            <td>Where \(U = \{x\}\) is an unlabeled instruction dataset, the language model policy \(\pi_\theta(y|x)\) is fine-tuned from the SFT model \(\pi^{SFT}\), the reference policy \(\pi_\text{ref}\) is also the SFT model \(\pi^{SFT}\), and \(\beta\) is a regularization coefficient controlling the deviation from \(\pi_\text{ref}\). This objective is typically optimized with RL algorithms such as PPO (Schulman et al., 2017).</td>
+            <td>其中，\(U = \{x\}\) 是未标记的指令数据集，语言模型策略 \(\pi_\theta(y|x)\) 从SFT模型 \(\pi^{SFT}\) 微调，参考策略 \(\pi_\text{ref}\) 也是SFT模型 \(\pi^{SFT}\)，\(\beta\) 是一个正则化系数，用于控制与 \(\pi_\text{ref}\) 的偏差。该目标通常使用PPO等RL算法进行优化（Schulman 等，2017）。</td>
+        </tr>
+        <tr>
+            <th>
+                <h1>4 Reward Learning on Policy</h1>
+            </th>
+            <th>
+                <h1>4 策略上的奖励学习</h1>
+            </th>
+        </tr>
+        <tr> 
+            <td><h2>4.1 Overview</h2></td>
+            <td><h2>4.1 概述</h2></td>        
+        </tr>
+        <tr>
+            <td>In this study, we propose a novel RLHF framework to fine-tune LLMs with human feedback following five steps:</td>
+            <td>在本研究中，我们提出了一种新的RLHF框架，通过人类反馈对LLMs进行微调，遵循五个步骤：</td>
+        </tr>
+        <tr>
+            <td>Step 1-3. Collect a pairwise human preference dataset D, then train a reward model \( r_\phi \) and fine-tune a language model policy \( \pi_\theta \);</td>
+            <td>步骤1-3. 收集成对的人类偏好数据集 D，然后训练奖励模型 \( r_\phi \) 并微调语言模型策略 \( \pi_\theta \)；</td>
+        </tr>
+        <tr>
+            <td>Step 4. Retrain a reward model \( \hat{r}_\phi \) using outputs of policy \( \pi_\theta \);</td>
+            <td>步骤4. 使用策略 \( \pi_\theta \) 的输出重新训练奖励模型 \( \hat{r}_\phi \)；</td>
+        </tr>
+        <tr>
+            <td>Step 5. Retrain a policy \( \hat{\pi}_\theta \) based on the retrained reward model \( \hat{r}_\phi \).</td>
+            <td>步骤5. 基于重新训练的奖励模型 \( \hat{r}_\phi \) 重新训练策略 \( \hat{\pi}_\theta \)。</td>
+        </tr>
+        <tr>
+            <td>Before applying RLP, we assume existing RLHF approaches can be used to train the reward model \( r_\phi \) and the policy \( \pi_\theta \) (Ouyang et al., 2022).</td>
+            <td>在应用RLP之前，我们假设现有的RLHF方法可以用来训练奖励模型 \( r_\phi \) 和策略 \( \pi_\theta \)（Ouyang 等，2022）。</td>
+        </tr>
+        <tr>
+            <td>The sample distribution of the policy \( \pi_\theta \) can be quite different from the preference data D on which the reward model \( r_\phi \) is trained (Touvron et al., 2023b).</td>
+            <td>策略 \( \pi_\theta \) 的样本分布可能与训练奖励模型 \( r_\phi \) 的偏好数据集 D 差异较大（Touvron 等，2023b）。</td>
+        </tr>
+        <tr>
+            <td>For example, outputs become increasingly longer after applying RLHF methods as shown in the analysis of AlpacaFarm (Dubois et al., 2024).</td>
+            <td>例如，如AlpacaFarm分析（Dubois 等，2024）所示，应用RLHF方法后，输出变得越来越长。</td>
+        </tr>
+        <tr>
+            <td>The average length of SFT outputs is 278 characters and applying PPO increases it to 637 tokens.</td>
+            <td>SFT输出的平均长度为278个字符，应用PPO后增加到637个token。</td>
+        </tr>
+        <tr>
+            <td>These distributional differences make the reward model \( r_\phi \) inaccurate off-distribution.</td>
+            <td>这些分布差异使得奖励模型 \( r_\phi \) 在分布外不准确。</td>
+        </tr>
+        <tr>
+            <td>Our goal is to refine the reward model using samples of the policy \( \pi_\theta \) and keep it on-distribution.</td>
+            <td>我们的目标是通过使用策略 \( \pi_\theta \) 的样本来完善奖励模型，并保持其在分布上。</td>
+        </tr>
+        <tr>
+            <td>This process is expected to increase the generalization of the retrained reward model \( \hat{r}_\phi \) to policy samples.</td>
+            <td>预计这个过程将提高重新训练的奖励模型 \( \hat{r}_\phi \) 对策略样本的泛化能力。</td>
+        </tr>
+        <tr>
+            <td>Accordingly, it can maintain an accurate reward during the RL policy optimization phase.</td>
+            <td>因此，它可以在RL策略优化阶段保持准确的奖励。</td>
+        </tr>
+        <tr>
+            <td>
+                <h2>4.2 Reward Retraining</h2>
+            </td>
+            <td>
+                <h2>4.2 奖励再训练</h2>
+            </td>
+        </tr>
+        <tr>
+            <td>We now describe how to retrain the reward model \( \hat{r}_\phi \) in Step 4 of RLP.</td>
+            <td>现在我们描述如何在RLP的步骤4中重新训练奖励模型 \( \hat{r}_\phi \)。</td>
+        </tr>
+        <tr>
+            <td>We first construct a dataset of policy samples \( P = \{(x, y) | x \in U, y \sim \pi_\theta(y|x)\} \), where \( y \) is a set of \( n \) outputs from policy \( \pi_\theta \) for instruction \( x \).</td>
+            <td>我们首先构建一个策略样本数据集 \( P = \{(x, y) | x \in U, y \sim \pi_\theta(y|x)\} \)，其中 \( y \) 是策略 \( \pi_\theta \) 对指令 \( x \) 的 \( n \) 个输出。</td>
+        </tr>
+        <tr>
+            <td>Then, we refine the reward model with policy samples \( P \) in addition to the human preference dataset \( D \).</td>
+            <td>然后，我们通过使用策略样本 \( P \) 和人类偏好数据集 \( D \) 来完善奖励模型。</td>
+        </tr>
+        <tr>
+            <td>Specifically, we propose two different methods for this purpose: unsupervised multi-view learning (UML) and synthetic preference generation (SPG).</td>
+            <td>具体来说，我们提出了两种不同的方法：无监督多视角学习（UML）和合成偏好生成（SPG）。</td>
+        </tr>
+        <tr>
+            <td>Unsupervised Multi-View Learning attempts to learn robust representations of policy samples.</td>
+            <td>无监督多视角学习试图学习策略样本的鲁棒表示。</td>
+        </tr>
+        <tr>
+            <td>For each pair \( (x, y) \in P \), two semantic invariant views are constructed: \( v_i(x) = (x, y) | y \sim y \), (i = 1, 2). These two views preserve the same task-relevant information (Zhao et al., 2017).</td>
+            <td>对于每对 \( (x, y) \in P \)，构建两个语义不变视图：\( v_i(x) = (x, y) | y \sim y \)，(i = 1, 2)。这两个视图保留相同的任务相关信息（Zhao等，2017）。</td>
+        </tr>
+        <tr>
+            <td>Then, a multi-view information bottleneck (MIB) loss (Federici et al., 2020) is optimized for unsupervised representation learning, following the information bottleneck principle (Tishby et al., 2000).</td>
+            <td>然后，优化多视角信息瓶颈（MIB）损失（Federici等，2020），以进行无监督表示学习，遵循信息瓶颈原理（Tishby等，2000）。</td>
+        </tr>
+        <tr>
+            <td>This optimization process retains task-relevant information in the representations while discarding superficial information.</td>
+            <td>这个优化过程保留了表示中的任务相关信息，同时丢弃了表面信息。</td>
+        </tr>
+        <tr>
+            <td>To facilitate the computation, we parametrize the representation \( z_i \) of each view \( v_i(x) \) with a factorized Gaussian distribution, i.e., \( p_\psi(z|v_i) = \mathcal{N}[\mu(v_i), \Sigma(v_i)] \).</td>
+            <td>为了方便计算，我们将每个视图 \( v_i(x) \) 的表示 \( z_i \) 参数化为一个分解的高斯分布，即 \( p_\psi(z|v_i) = \mathcal{N}[\mu(v_i), \Sigma(v_i)] \)。</td>
+        </tr>
+        <tr>
+            <td>Concretely, we estimate \( v_i(x) \) with the final transformer layer of the reward model and use two neural networks \( \mu(v_i) \) and \( \Sigma(v_i) \) to produce the mean and deviation respectively.</td>
+            <td>具体来说，我们使用奖励模型的最后一层Transformer估计 \( v_i(x) \)，并使用两个神经网络 \( \mu(v_i) \) 和 \( \Sigma(v_i) \) 分别生成均值和方差。</td>
+        </tr>
+        <tr>
+            <td>The following MIB loss is optimized:</td>
+            <td>优化以下MIB损失：</td>
+        </tr>
+        <tr>
+            <td>
+                \( L_M = \mathbb{E}_{(x, y) \sim P} \left[ -I(z_1; z_2) + D_{\text{SKL}}(p_\psi(z|v_1) || p_\psi(z|v_2)) \right] \),
+            </td>
+            <td>
+                \( L_M = \mathbb{E}_{(x, y) \sim P} \left[ -I(z_1; z_2) + D_{\text{SKL}}(p_\psi(z|v_1) || p_\psi(z|v_2)) \right] \),
+            </td>
+        </tr>
+        <tr>
+            <td>where \( I \) calculates mutual information of two random variables, and \( D_{\text{SKL}} \) represents the symmetrized KL divergence obtained by averaging the expected value of \( D_{\text{KL}}(p_\psi(z|v_1)||p_\psi(z|v_2)) \) and \( D_{\text{KL}}(p_\psi(z|v_2)||p_\psi(z|v_1)) \).</td>
+            <td>其中，\( I \) 计算两个随机变量的互信息，\( D_{\text{SKL}} \) 表示对称化的KL散度，通过平均 \( D_{\text{KL}}(p_\psi(z|v_1)||p_\psi(z|v_2)) \) 和 \( D_{\text{KL}}(p_\psi(z|v_2)||p_\psi(z|v_1)) \) 的期望值得到。</td>
+        </tr>
+        <tr>
+            <td>Synthetic Preference Generation aims to simulate high-quality preference data with policy samples.</td>
+            <td>合成偏好生成旨在通过策略样本模拟高质量的偏好数据。</td>
+        </tr>
+        <tr>
+            <td>For each pair \( (x, y) \in P \), we assume the most frequent item of \( y \) as the correct prediction and its frequency as the confidence score (Si et al., 2023), following the self-consistency assumption (Wang et al., 2023).</td>
+            <td>对于每对 \( (x, y) \in P \)，我们假设 \( y \) 中最频繁的项作为正确预测，并将其频率作为置信度分数（Si等，2023），遵循自一致性假设（Wang等，2023）。</td>
+        </tr>
+        <tr>
+            <td>To address semantic equivalence, i.e., different sentences can mean the same thing, we cluster items of \( y \) into groups \( G \) with a bi-directional entailment algorithm (Kuhn et al., 2023).</td>
+            <td>为了处理语义等价问题，即不同的句子可以表达相同的意思，我们使用双向蕴含算法（Kuhn等，2023）将 \( y \) 的项聚类成组 \( G \)。</td>
+        </tr>
+        <tr>
+            <td>Sentences from each group \( g \in G \) are expected to share the same meaning.</td>
+            <td>每个组 \( g \in G \) 中的句子预计共享相同的含义。</td>
+        </tr>
+        <tr>
+            <td>We estimate the confidence score of \( (x, y) \) as \( \frac{| \tilde{g} |}{|y|} \), where \( \tilde{g} \) is the largest group of \( G \) and the operator \( | \cdot | \) measures the size of a set.</td>
+            <td>我们估计 \( (x, y) \) 的置信度分数为 \( \frac{| \tilde{g} |}{|y|} \)，其中 \( \tilde{g} \) 是 \( G \) 中最大的组，操作符 \( | \cdot | \) 测量一个集合的大小。</td>
+        </tr>
+        <tr>
+            <td>Thus, we can selectively generate a synthetic preference dataset with high confidences \( \hat{D} = \{(x, y_w, y_l) | (x, y) \in P, \frac{| \tilde{g} |}{|y|} \geq \gamma, y_w \sim \tilde{g}, y_l \sim y \setminus \tilde{g}\} \), where \( \gamma \) is the threshold for selective generation, the preferred output \( y_w \) is sampled from the largest group \( \tilde{g} \) with the largest reward score and the non-preferred one \( y_l \) is randomly sampled from the rest groups.</td>
+            <td>因此，我们可以选择性地生成一个具有高置信度的合成偏好数据集 \( \hat{D} = \{(x, y_w, y_l) | (x, y) \in P, \frac{| \tilde{g} |}{|y|} \geq \gamma, y_w \sim \tilde{g}, y_l \sim y \setminus \tilde{g}\} \)，其中 \( \gamma \) 是选择性生成的阈值，优选输出 \( y_w \) 是从具有最大奖励分数的最大组 \( \tilde{g} \) 中采样的，非优选输出 \( y_l \) 是从其他组中随机采样的。</td>
+        </tr>
+        <tr>
+            <td>The overall loss that we optimize for the reward model \( \hat{r}_\phi \) is:</td>
+            <td>我们为奖励模型 \( \hat{r}_\phi \) 优化的总体损失为：</td>
+        </tr>
+        <td>
+            \( L_{\hat{R}} = - \mathbb{E}_{(x, y_w, y_l) \sim D \cup \hat{D}} \left[ \log \sigma(\hat{r}_\phi(x, y_w) - \hat{r}_\phi(x, y_l)) \right] + \lambda L_M \) \quad (1)
+        </td>
+        <td>
+            \( L_{\hat{R}} = - \mathbb{E}_{(x, y_w, y_l) \sim D \cup \hat{D}} \left[ \log \sigma(\hat{r}_\phi(x, y_w) - \hat{r}_\phi(x, y_l)) \right] + \lambda L_M \) \quad (1)
+        </td>
+        
+        <tr>
+            <td>where the coefficient \( \lambda \) controls the weight of the multi-view information bottleneck loss.</td>
+            <td>其中系数 \( \lambda \) 控制多视角信息瓶颈损失的权重。</td>
+        </tr>
+        <tr>
+            <td>To simplify computational complexity, we implement two variants: 1. RLP-UML removes the synthetic dataset \( \hat{D} \) in Eq. 1 and learns the representations of policy samples when fitting the reward model. 2. RLP-SPG removes the MIB loss by setting \( \lambda = 0 \) in Eq. 1 and fits the reward model with human and synthetic preference data.</td>
+            <td>为了简化计算复杂度，我们实现了两种变体：1. RLP-UML 移除公式1中的合成数据集 \( \hat{D} \)，在拟合奖励模型时学习策略样本的表示；2. RLP-SPG 通过在公式1中设置 \( \lambda = 0 \) 来移除MIB损失，并使用人类和合成偏好数据拟合奖励模型。</td>
+        </tr>          
+        <tr>
+            <td>
+                <h2>4.3 Policy Retraining</h2>
+            </td>
+            <td>
+                <h2>4.3 策略再训练</h2>
+            </td>
+        </tr>
+        <tr>
+            <td>We finally retrain the policy \( \hat{\pi}_\theta \) using \( \hat{r}_\phi \) in Step 5 of RLP.</td>
+            <td>我们最终在RLP的步骤5中使用 \( \hat{r}_\phi \) 重新训练策略 \( \hat{\pi}_\theta \)。</td>
+        </tr>
+        <tr>
+            <td>Specifically, we optimize \( \hat{\pi}_\theta \) to maximize</td>
+            <td>具体来说，我们优化 \( \hat{\pi}_\theta \) 以最大化</td>
+        </tr>
+        <tr>
+            <td>
+                \[
+                \mathbb{E}_{x \sim U, y \sim \hat{\pi}_\theta(y|x)} \left[\hat{r}_\phi(x, y) - \beta D_{\text{KL}}(\hat{\pi}_\theta(y|x) || \pi_{\text{ref}}(y|x)) \right].
+                \]
+            </td>
+            <td>
+                \[
+                \mathbb{E}_{x \sim U, y \sim \hat{\pi}_\theta(y|x)} \left[\hat{r}_\phi(x, y) - \beta D_{\text{KL}}(\hat{\pi}_\theta(y|x) || \pi_{\text{ref}}(y|x)) \right].
+                \]
+            </td>
+        </tr>
+        <tr>
+            <td>Our approach RLP is summarized in Algorithm 1.</td>
+            <td>我们的RLP方法总结在算法1中。</td>
+        </tr>
+        </table>
+        
+        <table border="1" style="border-collapse: collapse; width: 100%;">
+            <thead>
+                <tr>
+                    <th style="border-bottom: 2px solid black;">Algorithm 1: RLP: RLHF with Reward Learning on Policy</th>
+                    <th style="border-bottom: 2px solid black;">算法1：RLP：基于策略的奖励学习的RLHF</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border-bottom: 0.5px solid black;">
+                        <strong>Input:</strong> SFT model \( \pi_{\text{SFT}} \), unlabeled data \( U \).<br>
+                        <strong>Output:</strong> A language model policy \( \hat{\pi}_\theta \).<br>
+                        1. Collect a human preference dataset \( D \).<br>
+                        2. Train a reward model \( r_\phi \) using \( D \).<br>
+                        3. Fine-tune a language model \( \pi_\theta \) from \( \pi_{\text{SFT}} \) using \( U \) and \( r_\phi \).<br>
+                        4. Retrain a reward model \( \hat{r}_\phi \) using \( L_{\hat{R}} \) (Eq. 1).<br>
+                        5. Fine-tune \( \hat{\pi}_\theta \) from \( \pi_{\text{SFT}} \) using \( U \) and \( \hat{r}_\phi \).
+                    </td>
+                    <td style="border-bottom: 0.5px solid black;">
+                        <strong>输入：</strong> SFT模型 \( \pi_{\text{SFT}} \)，无标签数据 \( U \)。<br>
+                        <strong>输出：</strong> 语言模型策略 \( \hat{\pi}_\theta \)。<br>
+                        1. 收集人类偏好数据集 \( D \)。<br>
+                        2. 使用 \( D \) 训练奖励模型 \( r_\phi \)。<br>
+                        3. 使用 \( U \) 和 \( r_\phi \) 从 \( \pi_{\text{SFT}} \) 微调语言模型 \( \pi_\theta \)。<br>
+                        4. 使用 \( L_{\hat{R}} \)（公式1）重新训练奖励模型 \( \hat{r}_\phi \)。<br>
+                        5. 使用 \( U \) 和 \( \hat{r}_\phi \) 从 \( \pi_{\text{SFT}} \) 微调 \( \hat{\pi}_\theta \)。
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <div style="text-align: center;">
+            <img src="https://figures.semanticscholar.org/969c1dc38c98f2dbfb981a542880559890366494/4-Table1-1.png" 
+                alt="Table 1: Dataset statistics" 
+                style="max-width: 50%; height: auto;">
+            <p style="font-size: xx-small; line-height: 1.2;"><b>Table 1: Dataset statistics.</b></p>
+            <p style="font-size: xx-small; line-height: 1.2;"><b>表 1. 数据集统计信息。</b></p>
+        </div>
+        
+        
+</body>
+</html>
